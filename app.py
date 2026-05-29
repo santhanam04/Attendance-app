@@ -1,36 +1,85 @@
+# app.py
+# Attendance & OT Management System
+# Streamlit Full Dashboard UI
+
 import streamlit as st
-import sqlite3
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
+import plotly.express as px
 
-# ---------------- DATABASE ---------------- #
-conn = sqlite3.connect("attendance.db", check_same_thread=False)
-c = conn.cursor()
-
-c.execute("""
-CREATE TABLE IF NOT EXISTS attendance (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    emp_name TEXT,
-    date TEXT,
-    shift TEXT,
-    attendance TEXT,
-    ot_hours REAL
-)
-""")
-
-conn.commit()
-
-# ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(
     page_title="Attendance & OT Management System",
-    page_icon="📋",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-st.title("📋 Attendance & OT Management System")
-st.caption("Track attendance, overtime and generate reports")
+# =========================
+# CUSTOM CSS
+# =========================
+st.markdown("""
+<style>
 
-# ---------------- SIDEBAR ---------------- #
+body {
+    background-color: #050b16;
+}
+
+.main {
+    background: linear-gradient(to right,#020b16,#071426,#020b16);
+    color: white;
+}
+
+h1,h2,h3,h4,h5,h6,p,label,div {
+    color: white !important;
+}
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(to bottom,#020b16,#061427,#020b16);
+}
+
+.metric-card {
+    padding: 20px;
+    border-radius: 16px;
+    color: white;
+    box-shadow: 0px 0px 15px rgba(255,255,255,0.08);
+}
+
+.card-green {
+    background: linear-gradient(135deg,#1b5e20,#2e7d32);
+}
+
+.card-blue {
+    background: linear-gradient(135deg,#0d47a1,#1565c0);
+}
+
+.card-purple {
+    background: linear-gradient(135deg,#4527a0,#5e35b1);
+}
+
+.card-orange {
+    background: linear-gradient(135deg,#e65100,#ef6c00);
+}
+
+.table-box {
+    background-color: rgba(255,255,255,0.03);
+    padding: 15px;
+    border-radius: 15px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+
+.footer {
+    text-align:center;
+    color:gray;
+    margin-top:30px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# =========================
+# SIDEBAR
+# =========================
+st.sidebar.title("Attendance & OT\nManagement System")
+
 menu = st.sidebar.radio(
     "Menu",
     [
@@ -42,200 +91,325 @@ menu = st.sidebar.radio(
     ]
 )
 
-# ---------------- FETCH DATA ---------------- #
-df = pd.read_sql_query(
-    "SELECT * FROM attendance ORDER BY date DESC",
-    conn
+st.sidebar.markdown("---")
+
+# =========================
+# FILTERS
+# =========================
+st.sidebar.subheader("Filters")
+
+employee = st.sidebar.selectbox(
+    "Employee Name",
+    ["All Employees", "SANTHANA MARIAPPAN"]
 )
 
-# ---------------- DASHBOARD ---------------- #
+start_date = st.sidebar.date_input(
+    "Start Date",
+    datetime(2025,5,23)
+)
+
+end_date = st.sidebar.date_input(
+    "End Date",
+    datetime(2025,5,29)
+)
+
+st.sidebar.button("Apply Filter")
+
+st.sidebar.markdown("---")
+
+st.sidebar.subheader("Shift Timings")
+
+st.sidebar.markdown("""
+• 6:30 AM - 3:00 PM
+
+• 3:00 PM - 11:30 PM
+
+• 11:30 PM - 6:30 AM
+""")
+
+# =========================
+# SAMPLE DATA
+# =========================
+data = {
+    "ID":[16,15,14,13,12,11,10,9,8,7],
+    "Employee Name":["SANTHANA MARIAPPAN"]*10,
+    "Date":[
+        "2025-05-29",
+        "2025-05-28",
+        "2025-05-27",
+        "2025-05-26",
+        "2025-05-24",
+        "2025-05-23",
+        "2025-05-22",
+        "2025-05-21",
+        "2025-05-20",
+        "2025-05-19"
+    ],
+    "Shift":[
+        "6:30 AM - 3:00 PM",
+        "3:00 PM - 11:30 PM",
+        "6:30 AM - 3:00 PM",
+        "3:00 PM - 11:30 PM",
+        "3:00 PM - 11:30 PM",
+        "6:30 AM - 3:00 PM",
+        "3:00 PM - 11:30 PM",
+        "6:30 AM - 3:00 PM",
+        "3:00 PM - 11:30 PM",
+        "6:30 AM - 3:00 PM"
+    ],
+    "Status":[
+        "Present",
+        "Present",
+        "Present",
+        "Present",
+        "Present",
+        "Present",
+        "Absent",
+        "Present",
+        "Leave",
+        "Present"
+    ],
+    "OT Hours":[2,2,2,2,2,2,0,2.5,0,2]
+}
+
+df = pd.DataFrame(data)
+
+# =========================
+# DASHBOARD
+# =========================
 if menu == "Dashboard":
 
-    total_present = len(df[df["attendance"] == "Present"])
-    total_absent = len(df[df["attendance"] == "Absent"])
-    total_leave = len(df[df["attendance"] == "Leave"])
-    total_ot = df["ot_hours"].sum() if not df.empty else 0
+    st.title("Attendance & OT Management System")
+    st.write("Track attendance, overtime and generate reports")
 
-    today = datetime.today()
-    week_start = today - timedelta(days=7)
-    current_month = today.strftime("%Y-%m")
+    # =========================
+    # TOP CARDS
+    # =========================
+    col1,col2,col3,col4 = st.columns(4)
 
-    weekly_df = df[
-        pd.to_datetime(df["date"]) >= pd.to_datetime(week_start)
-    ] if not df.empty else pd.DataFrame()
+    with col1:
+        st.markdown("""
+        <div class="metric-card card-green">
+        <h4>Total Attendance</h4>
+        <h5>(Present Days)</h5>
+        <h1>12</h1>
+        </div>
+        """, unsafe_allow_html=True)
 
-    monthly_df = df[
-        df["date"].str.startswith(current_month)
-    ] if not df.empty else pd.DataFrame()
+    with col2:
+        st.markdown("""
+        <div class="metric-card card-blue">
+        <h4>This Week</h4>
+        <h5>(Present Days)</h5>
+        <h1>5</h1>
+        </div>
+        """, unsafe_allow_html=True)
 
-    weekly_present = len(
-        weekly_df[weekly_df["attendance"] == "Present"]
-    ) if not weekly_df.empty else 0
+    with col3:
+        st.markdown("""
+        <div class="metric-card card-purple">
+        <h4>This Month</h4>
+        <h5>(Present Days)</h5>
+        <h1>12</h1>
+        </div>
+        """, unsafe_allow_html=True)
 
-    monthly_present = len(
-        monthly_df[monthly_df["attendance"] == "Present"]
-    ) if not monthly_df.empty else 0
+    with col4:
+        st.markdown("""
+        <div class="metric-card card-orange">
+        <h4>Total OT Hours</h4>
+        <h1>24.50</h1>
+        </div>
+        """, unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
+    st.write("")
 
-    col1.metric("Total Attendance", total_present)
-    col2.metric("This Week", weekly_present)
-    col3.metric("This Month", monthly_present)
-    col4.metric("Total OT Hours", round(total_ot, 2))
+    # =========================
+    # WEEKLY + MONTHLY
+    # =========================
+    col5,col6 = st.columns(2)
 
-    st.divider()
+    with col5:
+        st.subheader("Weekly Summary")
 
+        weekly_df = pd.DataFrame({
+            "Day":["Fri (23)","Sat (24)","Sun (25)","Mon (26)","Tue (27)","Wed (28)","Thu (29)"],
+            "Present":[1,1,0,1,1,1,0],
+            "Absent":[0,0,0,0,0,0,0],
+            "Leave":[0,0,0,0,0,0,0],
+            "OT Hours":[2,2,0,2,2,2,0]
+        })
+
+        st.dataframe(
+            weekly_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    with col6:
+        st.subheader("Monthly Summary")
+
+        monthly_df = pd.DataFrame({
+            "Metric":[
+                "Total Present Days",
+                "Total Absent Days",
+                "Total Leave Days",
+                "Total OT Hours",
+                "Avg OT per Day"
+            ],
+            "Total":[12,2,1,24.50,2.04]
+        })
+
+        st.dataframe(
+            monthly_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+    st.write("")
+
+    # =========================
+    # ATTENDANCE RECORDS
+    # =========================
     st.subheader("Recent Attendance Records")
 
-    if not df.empty:
-        st.dataframe(df.head(20), use_container_width=True)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
 
-# ---------------- MANUAL ATTENDANCE ---------------- #
+    st.write("")
+
+    # =========================
+    # PIE CHART + QUICK STATS
+    # =========================
+    col7,col8 = st.columns([2,1])
+
+    with col7:
+
+        st.subheader("Attendance Overview (May 2025)")
+
+        pie_df = pd.DataFrame({
+            "Status":["Present","Absent","Leave"],
+            "Count":[12,2,1]
+        })
+
+        fig = px.pie(
+            pie_df,
+            values="Count",
+            names="Status",
+            hole=0.5
+        )
+
+        fig.update_layout(
+            paper_bgcolor="#071426",
+            plot_bgcolor="#071426",
+            font_color="white"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col8:
+
+        st.subheader("Quick Stats")
+
+        st.markdown("""
+        <div class="table-box">
+
+        <h4>Total Employees : 1</h4>
+
+        <h4>Total Records : 16</h4>
+
+        <h4>First Record : 2025-05-19</h4>
+
+        <h4>Latest Record : 2025-05-29</h4>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+# =========================
+# MANUAL ATTENDANCE
+# =========================
 elif menu == "Manual Attendance":
 
-    st.subheader("Manual Attendance Entry")
+    st.title("Manual Attendance Entry")
 
-    emp_name = st.text_input("Employee Name")
+    with st.form("attendance_form"):
 
-    date = st.date_input("Date")
+        emp_name = st.text_input("Employee Name")
 
-    shift = st.selectbox(
-        "Shift",
-        [
-            "6:30 AM - 3:00 PM",
-            "3:00 PM - 11:30 PM",
-            "11:30 PM - 6:30 AM"
-        ]
-    )
+        date = st.date_input("Date")
 
-    attendance = st.selectbox(
-        "Attendance Status",
-        ["Present", "Absent", "Leave"]
-    )
-
-    ot_hours = st.number_input(
-        "OT Hours",
-        min_value=0.0,
-        max_value=12.0,
-        step=0.5
-    )
-
-    if st.button("Save Attendance"):
-
-        c.execute(
-            """
-            INSERT INTO attendance
-            (emp_name, date, shift, attendance, ot_hours)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                emp_name,
-                str(date),
-                shift,
-                attendance,
-                ot_hours
-            )
-        )
-
-        conn.commit()
-
-        st.success("Attendance Saved Successfully!")
-
-# ---------------- VIEW ATTENDANCE ---------------- #
-elif menu == "View Attendance":
-
-    st.subheader("View Attendance")
-
-    if not df.empty:
-
-        employee_filter = st.selectbox(
-            "Employee Name",
-            ["All Employees"] + list(df["emp_name"].unique())
-        )
-
-        if employee_filter != "All Employees":
-            filtered_df = df[df["emp_name"] == employee_filter]
-        else:
-            filtered_df = df
-
-        st.dataframe(filtered_df, use_container_width=True)
-
-        total_present = len(
-            filtered_df[
-                filtered_df["attendance"] == "Present"
+        shift = st.selectbox(
+            "Shift",
+            [
+                "6:30 AM - 3:00 PM",
+                "3:00 PM - 11:30 PM",
+                "11:30 PM - 6:30 AM"
             ]
         )
 
-        total_ot = filtered_df["ot_hours"].sum()
-
-        col1, col2 = st.columns(2)
-
-        col1.metric("Total Attendance", total_present)
-        col2.metric("Total OT Hours", round(total_ot, 2))
-
-# ---------------- EMPLOYEE REPORT ---------------- #
-elif menu == "Employee Report":
-
-    st.subheader("Employee Report")
-
-    employee = st.text_input("Enter Employee Name")
-
-    if st.button("Generate Report"):
-
-        query = f"""
-        SELECT * FROM attendance
-        WHERE emp_name='{employee}'
-        ORDER BY date DESC
-        """
-
-        report_df = pd.read_sql_query(query, conn)
-
-        if not report_df.empty:
-
-            st.dataframe(report_df, use_container_width=True)
-
-            total_present = len(
-                report_df[
-                    report_df["attendance"] == "Present"
-                ]
-            )
-
-            total_absent = len(
-                report_df[
-                    report_df["attendance"] == "Absent"
-                ]
-            )
-
-            total_leave = len(
-                report_df[
-                    report_df["attendance"] == "Leave"
-                ]
-            )
-
-            total_ot = report_df["ot_hours"].sum()
-
-            col1, col2, col3, col4 = st.columns(4)
-
-            col1.metric("Present", total_present)
-            col2.metric("Absent", total_absent)
-            col3.metric("Leave", total_leave)
-            col4.metric("OT Hours", round(total_ot, 2))
-
-# ---------------- EXPORT DATA ---------------- #
-elif menu == "Export Data":
-
-    st.subheader("Export Attendance Data")
-
-    if not df.empty:
-
-        csv = df.to_csv(index=False).encode("utf-8")
-
-        st.download_button(
-            label="Download CSV File",
-            data=csv,
-            file_name="attendance_data.csv",
-            mime="text/csv"
+        status = st.selectbox(
+            "Status",
+            ["Present","Absent","Leave"]
         )
 
-st.divider()
-st.caption("Made with ❤️ using Streamlit")
+        ot = st.number_input(
+            "OT Hours",
+            min_value=0.0,
+            max_value=12.0,
+            step=0.5
+        )
+
+        submit = st.form_submit_button("Save Attendance")
+
+        if submit:
+            st.success("Attendance Saved Successfully!")
+
+# =========================
+# VIEW ATTENDANCE
+# =========================
+elif menu == "View Attendance":
+
+    st.title("View Attendance")
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+# =========================
+# EMPLOYEE REPORT
+# =========================
+elif menu == "Employee Report":
+
+    st.title("Employee Report")
+
+    st.info("Employee performance report section.")
+
+# =========================
+# EXPORT DATA
+# =========================
+elif menu == "Export Data":
+
+    st.title("Export Attendance Data")
+
+    csv = df.to_csv(index=False)
+
+    st.download_button(
+        "Download CSV",
+        csv,
+        "attendance_data.csv",
+        "text/csv"
+    )
+
+# =========================
+# FOOTER
+# =========================
+st.markdown("""
+<div class="footer">
+Made with ❤️ using Streamlit
+</div>
+""", unsafe_allow_html=True)
