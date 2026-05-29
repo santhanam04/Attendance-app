@@ -20,27 +20,80 @@ CREATE TABLE IF NOT EXISTS attendance (
 
 conn.commit()
 
-# ---------------- PAGE ---------------- #
+# ---------------- PAGE CONFIG ---------------- #
 st.set_page_config(
-    page_title="Attendance & OT Management",
+    page_title="Attendance & OT Management System",
+    page_icon="📋",
     layout="wide"
 )
 
 st.title("📋 Attendance & OT Management System")
+st.caption("Track attendance, overtime and generate reports")
 
-menu = [
-    "Manual Attendance Entry",
-    "View Attendance",
-    "Weekly Report",
-    "Monthly Report"
-]
+# ---------------- SIDEBAR ---------------- #
+menu = st.sidebar.radio(
+    "Menu",
+    [
+        "Dashboard",
+        "Manual Attendance",
+        "View Attendance",
+        "Employee Report",
+        "Export Data"
+    ]
+)
 
-choice = st.sidebar.selectbox("Select Menu", menu)
+# ---------------- FETCH DATA ---------------- #
+df = pd.read_sql_query(
+    "SELECT * FROM attendance ORDER BY date DESC",
+    conn
+)
 
-# ---------------- ADD ATTENDANCE ---------------- #
-if choice == "Manual Attendance Entry":
+# ---------------- DASHBOARD ---------------- #
+if menu == "Dashboard":
 
-    st.header("Manual Attendance Entry")
+    total_present = len(df[df["attendance"] == "Present"])
+    total_absent = len(df[df["attendance"] == "Absent"])
+    total_leave = len(df[df["attendance"] == "Leave"])
+    total_ot = df["ot_hours"].sum() if not df.empty else 0
+
+    today = datetime.today()
+    week_start = today - timedelta(days=7)
+    current_month = today.strftime("%Y-%m")
+
+    weekly_df = df[
+        pd.to_datetime(df["date"]) >= pd.to_datetime(week_start)
+    ] if not df.empty else pd.DataFrame()
+
+    monthly_df = df[
+        df["date"].str.startswith(current_month)
+    ] if not df.empty else pd.DataFrame()
+
+    weekly_present = len(
+        weekly_df[weekly_df["attendance"] == "Present"]
+    ) if not weekly_df.empty else 0
+
+    monthly_present = len(
+        monthly_df[monthly_df["attendance"] == "Present"]
+    ) if not monthly_df.empty else 0
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Total Attendance", total_present)
+    col2.metric("This Week", weekly_present)
+    col3.metric("This Month", monthly_present)
+    col4.metric("Total OT Hours", round(total_ot, 2))
+
+    st.divider()
+
+    st.subheader("Recent Attendance Records")
+
+    if not df.empty:
+        st.dataframe(df.head(20), use_container_width=True)
+
+# ---------------- MANUAL ATTENDANCE ---------------- #
+elif menu == "Manual Attendance":
+
+    st.subheader("Manual Attendance Entry")
 
     emp_name = st.text_input("Employee Name")
 
@@ -69,137 +122,120 @@ if choice == "Manual Attendance Entry":
 
     if st.button("Save Attendance"):
 
-        c.execute("""
-        INSERT INTO attendance
-        (emp_name, date, shift, attendance, ot_hours)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            emp_name,
-            str(date),
-            shift,
-            attendance,
-            ot_hours
-        ))
+        c.execute(
+            """
+            INSERT INTO attendance
+            (emp_name, date, shift, attendance, ot_hours)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                emp_name,
+                str(date),
+                shift,
+                attendance,
+                ot_hours
+            )
+        )
 
         conn.commit()
 
         st.success("Attendance Saved Successfully!")
 
 # ---------------- VIEW ATTENDANCE ---------------- #
-elif choice == "View Attendance":
+elif menu == "View Attendance":
 
-    st.header("Attendance Records")
+    st.subheader("View Attendance")
 
-    df = pd.read_sql_query(
-        "SELECT * FROM attendance ORDER BY date DESC",
-        conn
-    )
+    if not df.empty:
 
-    st.dataframe(df, use_container_width=True)
+        employee_filter = st.selectbox(
+            "Employee Name",
+            ["All Employees"] + list(df["emp_name"].unique())
+        )
 
-    total_present = len(df[df["attendance"] == "Present"])
-    total_ot = df["ot_hours"].sum()
+        if employee_filter != "All Employees":
+            filtered_df = df[df["emp_name"] == employee_filter]
+        else:
+            filtered_df = df
 
-    col1, col2 = st.columns(2)
+        st.dataframe(filtered_df, use_container_width=True)
 
-    col1.metric("Total Attendance", total_present)
-    col2.metric("Total OT Hours", round(total_ot, 2))
+        total_present = len(
+            filtered_df[
+                filtered_df["attendance"] == "Present"
+            ]
+        )
 
-# ---------------- WEEKLY REPORT ---------------- #
-elif choice == "Weekly Report":
+        total_ot = filtered_df["ot_hours"].sum()
 
-    st.header("Weekly Attendance & OT Report")
+        col1, col2 = st.columns(2)
+
+        col1.metric("Total Attendance", total_present)
+        col2.metric("Total OT Hours", round(total_ot, 2))
+
+# ---------------- EMPLOYEE REPORT ---------------- #
+elif menu == "Employee Report":
+
+    st.subheader("Employee Report")
 
     employee = st.text_input("Enter Employee Name")
 
-    if st.button("Generate Weekly Report"):
-
-        today = datetime.today()
-        week_ago = today - timedelta(days=7)
+    if st.button("Generate Report"):
 
         query = f"""
         SELECT * FROM attendance
         WHERE emp_name='{employee}'
-        AND date >= '{week_ago.date()}'
+        ORDER BY date DESC
         """
 
-        df = pd.read_sql_query(query, conn)
+        report_df = pd.read_sql_query(query, conn)
 
-        if not df.empty:
+        if not report_df.empty:
 
-            st.dataframe(df, use_container_width=True)
-
-            total_present = len(
-                df[df["attendance"] == "Present"]
-            )
-
-            total_ot = df["ot_hours"].sum()
-
-            col1, col2 = st.columns(2)
-
-            col1.metric(
-                "Weekly Attendance",
-                total_present
-            )
-
-            col2.metric(
-                "Weekly OT Hours",
-                round(total_ot, 2)
-            )
-
-        else:
-            st.warning("No Weekly Records Found")
-
-# ---------------- MONTHLY REPORT ---------------- #
-elif choice == "Monthly Report":
-
-    st.header("Monthly Attendance & OT Report")
-
-    employee = st.text_input("Employee Name")
-
-    if st.button("Generate Monthly Report"):
-
-        current_month = datetime.today().strftime("%Y-%m")
-
-        query = f"""
-        SELECT * FROM attendance
-        WHERE emp_name='{employee}'
-        AND date LIKE '{current_month}%'
-        """
-
-        df = pd.read_sql_query(query, conn)
-
-        if not df.empty:
-
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(report_df, use_container_width=True)
 
             total_present = len(
-                df[df["attendance"] == "Present"]
+                report_df[
+                    report_df["attendance"] == "Present"
+                ]
             )
 
-            total_ot = df["ot_hours"].sum()
-
-            col1, col2 = st.columns(2)
-
-            col1.metric(
-                "Monthly Attendance",
-                total_present
+            total_absent = len(
+                report_df[
+                    report_df["attendance"] == "Absent"
+                ]
             )
 
-            col2.metric(
-                "Monthly OT Hours",
-                round(total_ot, 2)
+            total_leave = len(
+                report_df[
+                    report_df["attendance"] == "Leave"
+                ]
             )
 
-            csv = df.to_csv(index=False).encode("utf-8")
+            total_ot = report_df["ot_hours"].sum()
 
-            st.download_button(
-                "Download Report CSV",
-                csv,
-                "monthly_report.csv",
-                "text/csv"
-            )
+            col1, col2, col3, col4 = st.columns(4)
 
-        else:
-            st.warning("No Monthly Records Found")
+            col1.metric("Present", total_present)
+            col2.metric("Absent", total_absent)
+            col3.metric("Leave", total_leave)
+            col4.metric("OT Hours", round(total_ot, 2))
+
+# ---------------- EXPORT DATA ---------------- #
+elif menu == "Export Data":
+
+    st.subheader("Export Attendance Data")
+
+    if not df.empty:
+
+        csv = df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download CSV File",
+            data=csv,
+            file_name="attendance_data.csv",
+            mime="text/csv"
+        )
+
+st.divider()
+st.caption("Made with ❤️ using Streamlit")
